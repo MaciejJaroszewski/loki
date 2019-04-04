@@ -5,6 +5,7 @@ const disableAnimations = require('./disable-animations');
 const getSelectorBoxSize = require('./get-selector-box-size');
 const getStories = require('./get-stories');
 const awaitLokiReady = require('./await-loki-ready');
+const addLokiSessionMarker = require('./add-loki-session-marker');
 const {
   withTimeout,
   TimeoutError,
@@ -14,7 +15,7 @@ const { FetchingURLsError, ServerError } = require('../../errors');
 
 const LOADING_STORIES_TIMEOUT = 60000;
 const CAPTURING_SCREENSHOT_TIMEOUT = 30000;
-const REQUEST_STABILIZATION_TIMEOUT = 100;
+const REQUEST_STABILIZATION_TIMEOUT = 1000;
 
 function createChromeTarget(
   start,
@@ -91,6 +92,9 @@ function createChromeTarget(
         };
 
         Network.requestWillBeSent(({ requestId, request }) => {
+          if (stabilizationTimer) {
+            clearTimeout(stabilizationTimer);
+          }
           pendingRequestURLMap[requestId] = request.url;
         });
 
@@ -145,10 +149,14 @@ function createChromeTarget(
       }
 
       debug(`Navigating to ${url}`);
-      await Promise.all([Page.navigate({ url }), awaitRequestsFinished()]);
-
+      await Promise.all([
+        Page.navigate({ url, transitionType: 'auto_subframe' }),
+        awaitRequestsFinished()
+      ]);
       debug('Awaiting runtime setup');
       await executeFunctionWithWindow(awaitLokiReady);
+
+      await executeFunctionWithWindow(addLokiSessionMarker);
     };
 
     const getPositionInViewport = async selector => {
